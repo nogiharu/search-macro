@@ -1,0 +1,171 @@
+    Option Explicit
+    
+    Public Sub Main()
+        Application.ScreenUpdating = False
+        'ファイル操作用オブジェクトの生成
+        Dim FSO As FileSystemObject
+        Set FSO = CreateObject("Scripting.FileSystemObject")
+        
+        '集計対象のファイルがある、親ファイルのパスを指定
+       With Application.FileDialog(msoFileDialogFolderPicker)
+       .Show
+       Dim rootFolder As String: rootFolder = .SelectedItems(1)
+       End With
+       
+            Process FSO.GetFolder(rootFolder)
+
+        MsgBox "処理が終わりました。"
+    End Sub
+        
+Sub Process(folder As folder)
+
+    On Error Resume Next
+
+    '引数で与えたフォルダをループし、サブフォルダがあれば、更に再帰的な探索を実行
+    Dim subFolder As folder
+    For Each subFolder In folder.SubFolders
+
+        Process subFolder
+
+    Next '次のサブフォルダへ
+
+    '引数で与えたフォルダにサブフォルダが無ければ、フォルダ配下のファイルを対象にした処理を実行
+    Dim file As file
+    For Each file In folder.Files
+
+        'エクセル開く
+        If file Like "*xlsx" Then
+            Workbooks.Open file
+            Dim book As String: book = Dir(file)
+
+            'ブックの全シートを 1 つずつループして処理する
+            Dim sheet As Worksheet
+
+            For Each sheet In Workbooks(book).Worksheets
+
+                '開いたブックのシートをアクティブにする
+                sheet.Select
+
+                Dim arry() As String
+                
+                '【シェイプ(図形、テキストボックスなどの要素】
+
+                Dim shp As shape
+                For Each shp In sheet.Shapes
+                        'シート内全ての図形(1)、テキストボックス(1７)、コメント(４)、吹き出し(2)、グラフ(３)を検索
+                        Select Case shp.Type
+                            Case 1
+                                arry = strSearch(shp.TextFrame.Characters.text, shp.TopLeftCell.Address)
+                                    writeValue file, sheet.Name, "図形", arry
+                                    Erase arry
+                            Case 17
+                                arry = strSearch(shp.TextFrame.Characters.text, shp.TopLeftCell.Address)
+                                    writeValue file, sheet.Name, "テキストボックス", arry
+                                    Erase arry
+                            Case 4
+                                arry = strSearch(shp.TextFrame.Characters.text, shp.TopLeftCell.Address)
+                                    writeValue file, sheet.Name, "コメント", arry
+                                    Erase arry
+                            Case 2
+                                arry = strSearch(shp.TextFrame.Characters.text, shp.TopLeftCell.Address)
+                                    writeValue file, sheet.Name, "吹き出し", arry
+                                    Erase arry
+                            Case 3
+                                arry = strSearch(shp.TextFrame.Characters.text, shp.TopLeftCell.Address)
+                                    writeValue file, sheet.Name, "グラフ", arry
+                                    Erase arry
+                        End Select
+
+                        'シート内全ての図形(1)、テキストボックス(1７)、吹き出し(2)を検索
+                        If shp.Type = 6 Then
+                            Dim groupShp As shape
+                            For Each groupShp In shp.GroupItems
+
+                                Select Case groupShp.Type
+                                    Case 1
+                                        arry = strSearch(groupShp.TextFrame.Characters.text, groupShp.TopLeftCell.Address)
+                                        writeValue file, sheet.Name, "図形", arry
+                                        Erase arry
+                                    Case 17
+                                        arry = strSearch(groupShp.TextFrame.Characters.text, groupShp.TopLeftCell.Address)
+                                        writeValue file, sheet.Name, "テキストボックス", arry
+                                        Erase arry
+                                    Case 2
+                                        arry = strSearch(groupShp.TextFrame.Characters.text, groupShp.TopLeftCell.Address)
+                                        writeValue file, sheet.Name, "吹き出し", arry
+                                        Erase arry
+                                End Select
+                                
+                            Next '次のグループシェイプへ
+                        End If
+                    Next '次のシェイプへ
+
+
+                '【セルの検索】
+                    '使われている全てのシートのセルを参照
+                    Dim cell As Range
+                    For Each cell In sheet.UsedRange
+
+                        '該当文字列調査
+                        arry = strSearch(cell.value, cell.Address)
+                        writeValue file, sheet.Name, "セル", arry
+                        Erase arry
+                        
+                    Next '次のセルへ
+
+            Next '次のシートへ
+            
+            '全シートの処理が終わったらブックを閉じる
+            If book Like "*.xlsx" Then
+            Workbooks(book).Close SaveChanges:=False
+            End If
+
+        End If
+
+    Next '次のファイルへ
+
+End Sub
+
+
+
+Sub writeValue(fileName As file, sheetName As String, typeName As String, arry() As String)
+                
+    If arry(0) <> "" Then
+    Dim num As Long
+        With ThisWorkbook.Worksheets(2)
+            num = .UsedRange.Rows.Count
+                .Cells(num + 1, 1).value = fileName
+                .Cells(num + 1, 2).value = Dir(fileName)
+                .Cells(num + 1, 3).value = sheetName
+                .Cells(num + 1, 4).value = typeName
+                .Cells(num + 1, 5).value = arry(0)
+                .Cells(num + 1, 6).value = arry(1)
+                .Cells(num + 1, 7).value = arry(2)
+                .Range("G:G").WrapText = False
+                .UsedRange.Borders.LineStyle = xlContinuous
+        End With
+    End If
+End Sub
+
+
+
+Function strSearch(str As String, addless As String) As String()
+
+    Dim result(3) As String
+
+    result(0) = ""
+
+    Dim searchValue As Variant
+    For Each searchValue In ThisWorkbook.Worksheets(1).UsedRange
+        If searchValue <> "" And Not searchValue = "検索ワード" And InStr(str, searchValue) Then
+
+            result(0) = Replace(addless, "$", "")
+            result(1) = searchValue
+            result(2) = str
+
+        End If
+    Next
+
+    strSearch = result()
+
+End Function
